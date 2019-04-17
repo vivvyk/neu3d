@@ -86,11 +86,12 @@ Neu3D.prototype.loadMeshCallBack = function(key, unit, visibility) {
       new THREE.MeshLambertMaterial({ color: color, transparent: true, side: 2, flatShading: true }),
       new THREE.MeshBasicMaterial({ color: color, wireframe: true, transparent: true })
     ];
-
-    let object = createMultiMaterialObject(geometry, materials);
     if (!this.settings.meshWireframe){
-      object.children[1].visible = false;
+      for (let i = 0; i < this.groups.back.children.length; i++)
+        this.groups.back.children[i].children[1].visible = false;
     }
+
+    let object = createMultiMaterialObject(geometry, materials);  
     object.visible = visibility;
     this._registerObject(key, unit, object);
   };
@@ -175,9 +176,9 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
               geometry = null;
             }
           }
-        }else {
+        } else {
           if (geometry == undefined)
-          geometry = new THREE.Geometry();
+            geometry = new THREE.Geometry();
           geometry.vertices.push(new THREE.Vector3(c.x, c.y, c.z));
           geometry.vertices.push(new THREE.Vector3(p.x, p.y, p.z));
           geometry.colors.push(color);
@@ -218,6 +219,7 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
       }
     }
     if (pointGeometry) {
+      //let pointBufferGeometry = new THREE.SphereBufferGeometry().fromGeometry( pointGeometry );
       let pointMaterial = new THREE.PointsMaterial({ color: color, size: this.settings.defaultSynapseRadius, lights: true });
       let points = new THREE.Points(pointGeometry, pointMaterial);
       object.add(points);
@@ -226,11 +228,13 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
       let material = new THREE.MeshLambertMaterial({ color: color, transparent: true });
       //let modifier = new THREE.SimplifyModifier();
       //simplified = modifier.modify( mergedGeometry, geometry.vertices.length * 0.25 | 0 )
+      //var bufferMergedGeometry = new THREE.BufferGeometry().fromGeometry( mergedGeometry );
       let mesh = new THREE.Mesh(mergedGeometry, material);
       //let mesh = new THREE.Mesh(simplified, material);
       object.add(mesh);
     }
     if (geometry) {
+      //var bufferGeometry = new THREE.BufferGeometry().fromGeometry( geometry );
       let material = new THREE.LineBasicMaterial({ vertexColors: THREE.VertexColors, transparent: true, color: color });
       object.add(new THREE.LineSegments(geometry, material));
     }
@@ -364,11 +368,13 @@ Neu3D.prototype.loadMorphJSONCallBack = function(key, unit, visibility) {
       let material = new THREE.MeshLambertMaterial({ color: color, transparent: true });
       //let modifier = new THREE.SimplifyModifier();
       //simplified = modifier.modify( mergedGeometry, geometry.vertices.length * 0.25 | 0 )
-      let mesh = new THREE.Mesh(mergedGeometry, material);
+      //var bufferMergedGeometry = new THREE.BufferGeometry().fromGeometry( geometry );
+      let mesh = new THREE.Mesh(geometry, material);
       //let mesh = new THREE.Mesh(simplified, material);
       object.add(mesh);
     }
     if (geometry) {
+      //var bufferGeometry = new THREE.BufferGeometry().fromGeometry( geometry );
       let material = new THREE.LineBasicMaterial({ vertexColors: THREE.VertexColors, transparent: true, color: color });
       object.add(new THREE.LineSegments(geometry, material));
     }

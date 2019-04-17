@@ -15,6 +15,7 @@ const THREE = require('../etc/three');
 import dat from '../etc/dat.gui';
 import '../style/neu3d.css';
 import { datGuiPresets } from './presets.js';
+import { PassThrough } from 'stream';
 
 var isOnMobile = checkOnMobile();
 
@@ -91,7 +92,7 @@ export class Neu3D {
       neuron3d: false,
       neuron3dMode: 1,
       synapseMode: true,
-      meshWireframe: true,
+      meshWireframe: false,
       backgroundColor: "#260226",
       render_resolution: 1.0
     });
@@ -123,7 +124,6 @@ export class Neu3D {
     // In case of non-unique labels, will hold the rid for the last object
     // added with that label
     this._labelToRid = {};
-    // THREE.Mesh.raycast = acceleratedRaycast;
     this.raycaster = new THREE.Raycaster();
     this.raycaster.linePrecision = 3;
     if (options['stats']) {
@@ -143,6 +143,9 @@ export class Neu3D {
     this.lightsHelper = this.initLights();
     this.lut = this.initLut();
     this.loadingManager = this.initLoadingManager();
+    this.trackballEvent = false;
+    this.scrollCounter = 100;
+    this.old_value;
     let controlPanelDiv = document.createElement('div');
     controlPanelDiv.id = 'vis-3d-settings';
 
@@ -214,9 +217,14 @@ export class Neu3D {
     //this.on('num', (function () { this.updateInfoPanel(); }).bind(this)); 
     this.on('num', ()=>{ this.controlPanel.__controllers[0].setValue(this.uiVars.frontNum); });
 
-    this.on('highlight', ((e) => { this.updateOpacity(e); this.onUpdateHighlight(e); }));
-    this.settings.on("change", ((e) => { 
-      this.updateOpacity(e);}), [
+    this.on('highlight', ((e) => {
+      if(!this.trackballEvent){
+        this.updateOpacity(e); 
+      }
+        this.onUpdateHighlight(e); 
+
+    }));
+    this.settings.on("change", ((e) => { this.updateOpacity(e); }), [
         "pinLowOpacity", "pinOpacity", "defaultOpacity", "backgroundOpacity",
         "backgroundWireframeOpacity", "synapseOpacity",
         "highlightedObjectOpacity", "nonHighlightableOpacity", "lowOpacity"
@@ -244,6 +252,7 @@ export class Neu3D {
     fileUploadInput.id = "neu3d-file-upload";
     fileUploadInput.setAttribute("type", "file");
     fileUploadInput.style.visibility = 'hidden';
+    fileUploadInput.setAttribute('multiple','');
     fileUploadInput.onchange = (evt) => {
       $.each(evt.target.files, function (i, file) {
         let reader = new FileReader();
@@ -363,6 +372,8 @@ export class Neu3D {
     f1_1.add(this.settings, 'highlightedObjectOpacity', 0.0, 1.0);
     f1_1.add(this.settings, 'backgroundOpacity', 0.0, 1.0);
     f1_1.add(this.settings, 'backgroundWireframeOpacity', 0.0, 1.0);
+
+    this._configureCallbacks();
     
     let f1_2 = f1.addFolder('Advanced');
 
@@ -489,9 +500,7 @@ export class Neu3D {
     else if (this.settings.render_resolution < 1.00)
      this.settings.backrenderSSAO.enabled = false;
 
-
     if(this.settings.render_resolution != this.resINeed){
-      //console.log("UPDATING");
       this.renderer.setPixelRatio(window.devicePixelRatio * this.settings.render_resolution);
       this.resINeed = this.settings.render_resolution;
     }
@@ -515,7 +524,12 @@ export class Neu3D {
     controls.panSpeed = 2.0;
     controls.staticMoving = true;
     controls.dynamicDampingFactor = 0.3;
-    controls.addEventListener('change', this.render.bind(this));
+    controls.addEventListener('start', ()=>{this.trackballEvent = true;}, false);
+    controls.addEventListener('end', (e)=>{
+      this.updateOpacity(e);
+      this.scrollCounter = parseInt(0.5*this.stats.getFPS());
+    }, false);
+    controls.addEventListener('change', ()=>{this.render();}, false);
     return controls;
   }
 
@@ -907,28 +921,27 @@ export class Neu3D {
     if (this.stats){
       this.stats.begin();
     }
-    this.controls.update(); // required if controls.enableDamping = true, or if controls.autoRotate = true
+
+    this.scrollCounter--;
+    if(this.scrollCounter == 0){
+      this.trackballEvent = false;
+    }
+
+    this.controls.update();
+
     if (this.states.mouseOver && this.dispatch.syncControls){
       this.dispatch.syncControls(this);
-      if(options['adaptive']){
-        this.updateResolution();
-        this.updateShaders();
-        /*
-        if(this.frameCounter < 3){
-          this.frameCounter++;
-        }else{
-          this.updateResolution();
-          this.updateShaders();
-          this.frameCounter = 0;
-        }
-        */
-
-      }
     }
+    if(options['adaptive'] && !this.trackballEvent){
+      this.updateResolution();
+      //this.updateShaders();
+    }
+
     this.render();
     if (this.stats){
       this.stats.end();
     }
+    console.log(this.trackballEvent);
     requestAnimationFrame(this.animate.bind(this));
   }
 
@@ -968,7 +981,7 @@ export class Neu3D {
     if (event !== undefined){
       event.preventDefault();
     }
-
+    this.trackballEvent = false;
     let intersected = this.getIntersection([this.groups.front]);
     if (intersected != undefined && intersected['highlight']) {
       this.select(intersected.rid);
@@ -1083,7 +1096,7 @@ export class Neu3D {
    * Render 
    */
   render() {
-    if (this.states.highlight){
+    if (this.states.highlight || this.trackballEvent){
       // do nothing
     } else{
       for (let key in this.meshDict) {
@@ -1095,12 +1108,17 @@ export class Neu3D {
               obj[0].material.opacity = this.meshDict[key]['opacity'] * (this.settings.backgroundOpacity + 0.5 * this.settings.meshOscAmp * (1 + Math.sin(x * .0005)));
             }else{
               obj[0].material.opacity = this.settings.backgroundOpacity + 0.5 * this.settings.meshOscAmp * (1 + Math.sin(x * .0005));
-              obj[1].material.opacity = this.settings.backgroundWireframeOpacity;
+              
+              if(obj.length > 1){
+                obj[1].material.opacity = this.settings.backgroundWireframeOpacity;
+              }
             }
             
             
             obj[0].material.opacity = this.settings.backgroundOpacity + 0.5 * this.settings.meshOscAmp * (1 + Math.sin(x * .0005));
-            obj[1].material.opacity = this.settings.backgroundWireframeOpacity;
+            if(obj.length > 1){
+              obj[1].material.opacity = this.settings.backgroundWireframeOpacity;
+            }
           } else {
             //TODO: check what this else loop does
           }
@@ -1119,7 +1137,7 @@ export class Neu3D {
       }
     }
 
-    this.composer.render();
+    this.composer.render();    
     if (this._take_screenshot) {
       this.renderer.domElement.toBlob(function (b) {
         _saveImage(b, "ffbo_screenshot.png")
@@ -1136,6 +1154,11 @@ export class Neu3D {
     if (groups === undefined){
       return undefined;
     }
+
+    if(this.trackballEvent){
+      return this.old_value;
+    }
+
     let val = undefined;
     let object = undefined;
     this.raycaster.setFromCamera(this.uiVars.cursorPosition, this.camera);
@@ -1150,6 +1173,7 @@ export class Neu3D {
         }
       }
     }
+    this.old_value = val;
     return val;
   }
 
@@ -1407,7 +1431,9 @@ export class Neu3D {
           }
         } else {
           val.object.children[0].material.opacity = this.settings.backgroundOpacity;
-          val.object.children[1].material.opacity = this.settings.backgroundWireframeOpacity;
+          if(val.object.children.length > 1){
+            val.object.children[1].material.opacity = this.settings.backgroundWireframeOpacity;
+          }
         }
       }
     } else if (e.prop == 'pinned' && this.states.pinned) {// New object being pinned while already in pinned mode
@@ -1446,10 +1472,14 @@ export class Neu3D {
       } else {
         if (this.meshDict[key]['opacity'] >= 0.){
           this.meshDict[key].object.children[0].material.opacity = this.meshDict[key]['opacity'] * this.settings.backgroundOpacity;
-          this.meshDict[key].object.children[1].material.opacity = this.meshDict[key]['opacity'] * this.settings.backgroundWireframeOpacity;
+          if(this.meshDict[key].object.children.length > 1){
+            this.meshDict[key].object.children[1].material.opacity = this.meshDict[key]['opacity'] * this.settings.backgroundWireframeOpacity;
+          }
         } else{
           this.meshDict[key].object.children[0].material.opacity = this.settings.backgroundOpacity;
-          this.meshDict[key].object.children[1].material.opacity = this.settings.backgroundWireframeOpacity;
+          if(this.meshDict[key].object.children.length > 1){
+            this.meshDict[key].object.children[1].material.opacity = this.settings.backgroundWireframeOpacity;
+          }
         }
       }
     }
