@@ -477,8 +477,8 @@ export class Neu3D {
     
     if (this.stats.getFPS() < 30 && this.settings.render_resolution > 0.25) {
       this.settings.render_resolution = this.settings.render_resolution - 0.005;
-      if (this.settings.render_resolution < 0.25)
-        this.settings.render_resolution = 0.25;
+      if (this.settings.render_resolution < 0.5)
+        this.settings.render_resolution = 0.5;
       if (this.settings.backrenderSSAO.enabled == true)
       this.highSettingsFPS = 1.0 + (1-1/this.stats.getFPS())*this.highSettingsFPS;
     }
@@ -941,7 +941,6 @@ export class Neu3D {
     if (this.stats){
       this.stats.end();
     }
-    console.log(this.trackballEvent);
     requestAnimationFrame(this.animate.bind(this));
   }
 

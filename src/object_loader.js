@@ -20,7 +20,42 @@ function createMultiMaterialObject(geometry, materials) {
   return group;
 }
 
+function size(obj){
+  let count = 0;
+  for(let i in obj){
+    count++;
+  }
 
+  return count;
+}
+
+function traceback(swcObj, ind, path){
+  path.push(parseInt(ind));
+
+  if(ind == 1){
+    return path.reverse();
+  }
+
+  return traceback(swcObj, swcObj[ind].parent, path);
+}
+
+function obtainPaths(swcObj){
+  let paths = [];
+  for(let i in swcObj){
+
+    if(i == 1)
+      continue;
+
+    if(swcObj[i].parent != i-1){
+      paths.push(traceback(swcObj, i-1, []));
+    }
+    
+    if(i == size(swcObj)){
+      paths.push(traceback(swcObj, i, []));
+    }
+  }
+  return paths;
+}
 /**
 * Register Object to `meshDict`
 * @param {*} key 
@@ -132,7 +167,7 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
     let mergedGeometry = undefined;
     let geometry = undefined;
     let sphereGeometry = undefined;
-    
+    /*
     for (let idx in swcObj) {
       let c = swcObj[idx];
       if (idx == Math.round(len / 2) && unit.position == undefined)
@@ -178,7 +213,7 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
           }
         } else {
           if (geometry == undefined)
-            geometry = new THREE.Geometry();
+          geometry = new THREE.Geometry();
           geometry.vertices.push(new THREE.Vector3(c.x, c.y, c.z));
           geometry.vertices.push(new THREE.Vector3(p.x, p.y, p.z));
           geometry.colors.push(color);
@@ -218,6 +253,7 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
         }
       }
     }
+    */
     if (pointGeometry) {
       //let pointBufferGeometry = new THREE.SphereBufferGeometry().fromGeometry( pointGeometry );
       let pointMaterial = new THREE.PointsMaterial({ color: color, size: this.settings.defaultSynapseRadius, lights: true });
@@ -233,10 +269,45 @@ Neu3D.prototype.loadSWCCallBack = function(key, unit, visibility) {
       //let mesh = new THREE.Mesh(simplified, material);
       object.add(mesh);
     }
-    if (geometry) {
+    if (true) {
       //var bufferGeometry = new THREE.BufferGeometry().fromGeometry( geometry );
-      let material = new THREE.LineBasicMaterial({ vertexColors: THREE.VertexColors, transparent: true, color: color });
-      object.add(new THREE.LineSegments(geometry, material));
+
+      let material = new THREE.MeshLambertMaterial({ color: color, transparent: true });
+      
+      let paths = obtainPaths(swcObj);
+      let mergedGeometry = new THREE.Geometry();
+
+      let cached = [];
+      for(var i = 0; i < paths.length; i++){
+        let points = [];
+        let path = paths[i];
+        let counter = 0;
+        for(var j =0; j < path.length; j++){
+          if(cached.includes(path[j])){
+             continue;
+          }
+          cached.push(path[j]);
+          let idx = path[j];
+          let c = swcObj[idx];
+          if(c.parent != -1){
+            if(counter == 0){
+              let p = swcObj[c.parent];
+              points.push(new THREE.Vector3(p.x, p.y, p.z));
+            }
+            points.push(new THREE.Vector3(c.x, c.y, c.z));
+          }
+          counter++;
+        }
+        var curve = new THREE.CatmullRomCurve3(points, false);
+        let path_geo = new THREE.TubeGeometry(curve, 80, 1, 20, false);
+        mergedGeometry.merge(path_geo);
+      }
+
+      let mesh = new THREE.Mesh(mergedGeometry, material);
+      object.add(mesh);
+
+      //let material = new THREE.LineBasicMaterial({ vertexColors: THREE.VertexColors, transparent: true, color: color, linewidth: 3 });
+      //object.add(new THREE.LineSegments(geometry, material));
     }
     object.visible = visibility;
     this._registerObject(key, unit, object);
